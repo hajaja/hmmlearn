@@ -7,6 +7,21 @@ import numpy as np
 
 ctypedef double dtype_t
 
+cdef inline dtype_t find_log_transmat(
+        int i, int j, int t,
+        dtype_t[:, :] log_transmat,
+        int[:] Y
+        ) nogil:
+    if t == 0:
+        return log_transmat[i, j]
+    else:
+        if Y[t] == 99 or Y[t-1] == 99:
+            return log_transmat[i, j]
+        else:
+            if Y[t-1] == i and Y[t] == j:
+                return 0    # force to route this pass
+            else:
+                return -100
 
 cdef inline int _argmax(dtype_t[:] X) nogil:
     cdef dtype_t X_max = -INFINITY
@@ -48,7 +63,9 @@ def _forward(int n_samples, int n_components,
              dtype_t[:] log_startprob,
              dtype_t[:, :] log_transmat,
              dtype_t[:, :] framelogprob,
-             dtype_t[:, :] fwdlattice):
+             dtype_t[:, :] fwdlattice,
+             int[:] Y
+             ):
 
     cdef int t, i, j
     cdef dtype_t[::view.contiguous] work_buffer = np.zeros(n_components)
@@ -60,7 +77,7 @@ def _forward(int n_samples, int n_components,
         for t in range(1, n_samples):
             for j in range(n_components):
                 for i in range(n_components):
-                    work_buffer[i] = fwdlattice[t - 1, i] + log_transmat[i, j]
+                    work_buffer[i] = fwdlattice[t - 1, i] + find_log_transmat(i, j, t, log_transmat, Y)
 
                 fwdlattice[t, j] = _logsumexp(work_buffer) + framelogprob[t, j]
 
@@ -69,7 +86,9 @@ def _backward(int n_samples, int n_components,
               dtype_t[:] log_startprob,
               dtype_t[:, :] log_transmat,
               dtype_t[:, :] framelogprob,
-              dtype_t[:, :] bwdlattice):
+              dtype_t[:, :] bwdlattice,
+              int[:] Y
+              ):
 
     cdef int t, i, j
     cdef dtype_t[::view.contiguous] work_buffer = np.zeros(n_components)
@@ -81,7 +100,7 @@ def _backward(int n_samples, int n_components,
         for t in range(n_samples - 2, -1, -1):
             for i in range(n_components):
                 for j in range(n_components):
-                    work_buffer[j] = (log_transmat[i, j]
+                    work_buffer[j] = (find_log_transmat(i, j, t, log_transmat, Y)
                                       + framelogprob[t + 1, j]
                                       + bwdlattice[t + 1, j])
                 bwdlattice[t, i] = _logsumexp(work_buffer)
@@ -92,7 +111,9 @@ def _compute_log_xi_sum(int n_samples, int n_components,
                         dtype_t[:, :] log_transmat,
                         dtype_t[:, :] bwdlattice,
                         dtype_t[:, :] framelogprob,
-                        dtype_t[:, :] log_xi_sum):
+                        dtype_t[:, :] log_xi_sum, 
+                        int[:] Y
+                        ):
 
     cdef int t, i, j
     cdef dtype_t[:, ::view.contiguous] work_buffer = \
@@ -103,8 +124,8 @@ def _compute_log_xi_sum(int n_samples, int n_components,
         for t in range(n_samples - 1):
             for i in range(n_components):
                 for j in range(n_components):
-                    work_buffer[i, j] = (fwdlattice[t, i]
-                                         + log_transmat[i, j]
+                    work_buffer[i, j] = (fwdlattice[t, i] 
+                                        + find_log_transmat(i, j, t, log_transmat, Y)
                                          + framelogprob[t + 1, j]
                                          + bwdlattice[t + 1, j]
                                          - logprob)
@@ -118,7 +139,9 @@ def _compute_log_xi_sum(int n_samples, int n_components,
 def _viterbi(int n_samples, int n_components,
              dtype_t[:] log_startprob,
              dtype_t[:, :] log_transmat,
-             dtype_t[:, :] framelogprob):
+             dtype_t[:, :] framelogprob, 
+             int[:] Y
+             ):
 
     cdef int i, j, t, where_from
     cdef dtype_t logprob
@@ -137,7 +160,7 @@ def _viterbi(int n_samples, int n_components,
         for t in range(1, n_samples):
             for i in range(n_components):
                 for j in range(n_components):
-                    work_buffer[j] = (log_transmat[j, i]
+                    work_buffer[j] = (find_log_transmat(i, j, t, log_transmat, Y)
                                       + viterbi_lattice[t - 1, j])
 
                 viterbi_lattice[t, i] = _max(work_buffer) + framelogprob[t, i]
@@ -150,7 +173,8 @@ def _viterbi(int n_samples, int n_components,
         for t in range(n_samples - 2, -1, -1):
             for i in range(n_components):
                 work_buffer[i] = (viterbi_lattice[t, i]
-                                  + log_transmat[i, where_from])
+                                  + find_log_transmat(i, j, t, log_transmat, Y)
+                                  )
 
             state_sequence[t] = where_from = _argmax(work_buffer)
 

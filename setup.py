@@ -19,7 +19,7 @@ except ImportError:
 from setuptools import setup, Extension
 
 
-DISTNAME = "hmmlearn"
+DISTNAME = "hmmlearnCSD"
 DESCRIPTION = __doc__
 LONG_DESCRIPTION = open("README.rst").read()
 MAINTAINER = "Sergei Lebedev"
@@ -43,9 +43,9 @@ CLASSIFIERS = [
     "Programming Language :: Python :: 3.5",
 ]
 
-import hmmlearn
+import hmmlearnCSD
 
-VERSION = hmmlearn.__version__
+VERSION = hmmlearnCSD.__version__
 
 install_requires = ["scikit-learn>=0.16"]
 tests_require = install_requires + ["pytest"]
@@ -54,7 +54,7 @@ docs_require = install_requires + [
 ]
 
 setup_options = dict(
-    name="hmmlearn",
+    name="hmmlearnCSD",
     version=VERSION,
     description=DESCRIPTION,
     long_description=LONG_DESCRIPTION,
@@ -62,10 +62,10 @@ setup_options = dict(
     maintainer_email=MAINTAINER_EMAIL,
     license=LICENSE,
     url="https://github.com/hmmlearn/hmmlearn",
-    packages=["hmmlearn", "hmmlearn.tests"],
+    packages=["hmmlearnCSD"],
     classifiers=CLASSIFIERS,
     ext_modules=[
-        Extension("hmmlearn._hmmc", ["hmmlearn/_hmmc.c"],
+        Extension("hmmlearnCSD._hmmc", ["hmmlearnCSD/_hmmc.c"],
                   extra_compile_args=["-O3"],
                   **get_info("npymath"))
     ],

@@ -214,7 +214,7 @@ class _BaseHMM(BaseEstimator):
             posteriors[i:j] = self._compute_posteriors(fwdlattice, bwdlattice)
         return logprob, posteriors
 
-    def score(self, X, lengths=None):
+    def score(self, X, Y, lengths=None):
         """Compute the log probability under the model.
 
         Parameters
@@ -245,6 +245,7 @@ class _BaseHMM(BaseEstimator):
         logprob = 0
         for i, j in iter_from_X_lengths(X, lengths):
             framelogprob = self._compute_log_likelihood(X[i:j])
+            self.Y = Y[i:j]
             logprobij, _fwdlattice = self._do_forward_pass(framelogprob)
             logprob += logprobij
         return logprob
@@ -259,7 +260,7 @@ class _BaseHMM(BaseEstimator):
         state_sequence = np.argmax(posteriors, axis=1)
         return logprob, state_sequence
 
-    def decode(self, X, lengths=None, algorithm=None):
+    def decode(self, X, Y, lengths=None, algorithm=None):
         """Find most likely state sequence corresponding to ``X``.
 
         Parameters
@@ -308,13 +309,14 @@ class _BaseHMM(BaseEstimator):
         state_sequence = np.empty(n_samples, dtype=int)
         for i, j in iter_from_X_lengths(X, lengths):
             # XXX decoder works on a single sample at a time!
+            self.Y = Y[i:j]
             logprobij, state_sequenceij = decoder(X[i:j])
             logprob += logprobij
             state_sequence[i:j] = state_sequenceij
 
         return logprob, state_sequence
 
-    def predict(self, X, lengths=None):
+    def predict(self, X, Y, lengths=None):
         """Find most likely state sequence corresponding to ``X``.
 
         Parameters
@@ -331,7 +333,7 @@ class _BaseHMM(BaseEstimator):
         state_sequence : array, shape (n_samples, )
             Labels for each sample from ``X``.
         """
-        _, state_sequence = self.decode(X, lengths)
+        _, state_sequence = self.decode(X, Y, lengths)
         return state_sequence
 
     def predict_proba(self, X, lengths=None):
@@ -395,7 +397,7 @@ class _BaseHMM(BaseEstimator):
 
         return np.atleast_2d(X), np.array(state_sequence, dtype=int)
 
-    def fit(self, X, lengths=None):
+    def fit(self, X, Y, lengths=None):
         """Estimate model parameters.
 
         An initialization step is performed before entering the
@@ -426,6 +428,7 @@ class _BaseHMM(BaseEstimator):
             stats = self._initialize_sufficient_statistics()
             curr_logprob = 0
             for i, j in iter_from_X_lengths(X, lengths):
+                self.Y = Y[i:j]
                 framelogprob = self._compute_log_likelihood(X[i:j])
                 logprob, fwdlattice = self._do_forward_pass(framelogprob)
                 curr_logprob += logprob
@@ -449,7 +452,7 @@ class _BaseHMM(BaseEstimator):
         n_samples, n_components = framelogprob.shape
         state_sequence, logprob = _hmmc._viterbi(
             n_samples, n_components, log_mask_zero(self.startprob_),
-            log_mask_zero(self.transmat_), framelogprob)
+            log_mask_zero(self.transmat_), framelogprob, self.Y)
         return logprob, state_sequence
 
     def _do_forward_pass(self, framelogprob):
@@ -458,7 +461,7 @@ class _BaseHMM(BaseEstimator):
         _hmmc._forward(n_samples, n_components,
                        log_mask_zero(self.startprob_),
                        log_mask_zero(self.transmat_),
-                       framelogprob, fwdlattice)
+                       framelogprob, fwdlattice, self.Y)
         return logsumexp(fwdlattice[-1]), fwdlattice
 
     def _do_backward_pass(self, framelogprob):
@@ -467,7 +470,7 @@ class _BaseHMM(BaseEstimator):
         _hmmc._backward(n_samples, n_components,
                         log_mask_zero(self.startprob_),
                         log_mask_zero(self.transmat_),
-                        framelogprob, bwdlattice)
+                        framelogprob, bwdlattice, self.Y)
         return bwdlattice
 
     def _compute_posteriors(self, fwdlattice, bwdlattice):
@@ -623,7 +626,8 @@ class _BaseHMM(BaseEstimator):
             _hmmc._compute_log_xi_sum(n_samples, n_components, fwdlattice,
                                       log_mask_zero(self.transmat_),
                                       bwdlattice, framelogprob,
-                                      log_xi_sum)
+                                      log_xi_sum,
+                                      self.Y)
             stats['trans'] += np.exp(log_xi_sum)
 
     def _do_mstep(self, stats):
